@@ -60,5 +60,56 @@ namespace Palinodia.Tests
                 Object.DestroyImmediate(envObj);
             }
         }
+        [Test]
+        public void HeatSourceContinuesToTransferEnergyWhileStorageHasCapacity()
+        {
+            GameObject envObj = new GameObject("test stage");
+            GameObject hotObj = new GameObject("test heat core");
+            try
+            {
+                StageEnvironmentState stage = envObj.AddComponent<StageEnvironmentState>();
+                PhysicalBodyState core = hotObj.AddComponent<PhysicalBodyState>();
+                core.Configure(stage, BodyCategory.Heater, "core", 245, 3300, 0, 22);
+                var reserve = new EnergyReservoir(150000, 0);
+                double originalJ = core.MaxRemovableHeatJ;
+                for (int i = 0; i < 10; i++)
+                {
+                    TransferReceipt transfer = EnergyTransfer.Absorb(core, reserve, stage, 760, .8);
+                    Assert.Greater(transfer.CreditedJ, 0);
+                    Assert.That(transfer.DebitedJ, Is.EqualTo(transfer.CreditedJ + transfer.WasteHeatJ).Within(1e-7));
+                }
+                Assert.That(reserve.StoredJ, Is.EqualTo(6080d).Within(1e-7));
+                Assert.That(core.MaxRemovableHeatJ, Is.EqualTo(originalJ - 7600d).Within(1e-6));
+            }
+            finally
+            {
+                Object.DestroyImmediate(hotObj);
+                Object.DestroyImmediate(envObj);
+            }
+        }
+
+        [Test]
+        public void FullReservoirNeverExtractsHeatFromSource()
+        {
+            GameObject envObj = new GameObject("test stage");
+            GameObject hotObj = new GameObject("test source");
+            try
+            {
+                StageEnvironmentState stage = envObj.AddComponent<StageEnvironmentState>();
+                PhysicalBodyState core = hotObj.AddComponent<PhysicalBodyState>();
+                core.Configure(stage, BodyCategory.Heater, "core", 245, 3300, 0, 22);
+                var reserve = new EnergyReservoir(1000, 1000);
+                double sourceBefore = core.TemperatureC;
+                TransferReceipt transfer = EnergyTransfer.Absorb(core, reserve, stage, 2000, .8);
+                Assert.That(transfer.DebitedJ, Is.EqualTo(0));
+                Assert.That(transfer.CreditedJ, Is.EqualTo(0));
+                Assert.That(core.TemperatureC, Is.EqualTo(sourceBefore));
+            }
+            finally
+            {
+                Object.DestroyImmediate(hotObj);
+                Object.DestroyImmediate(envObj);
+            }
+        }
     }
 }

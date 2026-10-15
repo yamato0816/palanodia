@@ -49,10 +49,19 @@ namespace Palinodia.Gameplay
             PhysicalBodyState source = heater.AddComponent<PhysicalBodyState>();
             source.Configure(stage, BodyCategory.Heater, "HEAT CORE A / thermal reservoir",
                 245, 3300, 1.8, 22);
+            heater.AddComponent<EnergyCoreVisual>().Initialize(source);
             GameObject pedestal = Shape(PrimitiveType.Cylinder, "Core pedestal",
                 new Vector3(-7.5f, .48f, -11), new Vector3(2.8f, .48f, 2.8f), wall);
-            Shape(PrimitiveType.Cylinder, "Core guard ring", new Vector3(-7.5f, 2.85f, -11),
-                new Vector3(2.7f, .08f, 2.7f), accent);
+            Decoration(PrimitiveType.Cylinder, "Core guard ring / nonblocking visual",
+                new Vector3(-7.5f, 2.85f, -11), new Vector3(2.7f, .08f, 2.7f), accent);
+            // No decorative collider is allowed to conceal the interactive source.
+            for (int i = 0; i < 4; i++)
+            {
+                float a = i * Mathf.PI * .5f;
+                Decoration(PrimitiveType.Cylinder, "Core containment light " + i,
+                    new Vector3(-7.5f + Mathf.Cos(a) * 1.53f, 1.95f, -11 + Mathf.Sin(a) * 1.53f),
+                    new Vector3(.13f, .92f, .13f), new Color(1f, .46f, .1f), true);
+            }
 
             MakeRigidbodyBox("Movable steel crate", new Vector3(5, .8f, -6), new Vector3(1.4f, 1.4f, 1.4f),
                 new Color(.54f, .63f, .73f), BodyCategory.Metal, 75, 3000);
@@ -102,6 +111,26 @@ namespace Palinodia.Gameplay
                 new Vector3(1.5f, .35f, 46), accent);
             Shape(PrimitiveType.Cube, "Roof rim east", new Vector3(16.9f, 7.8f, 0),
                 new Vector3(1.5f, .35f, 46), accent);
+            for (int i = 0; i < 11; i++)
+            {
+                float z = -20f + i * 3.9f;
+                Decoration(PrimitiveType.Cube, "Runway neon left " + i,
+                    new Vector3(-3.3f, .012f, z), new Vector3(.075f, .025f, 2.1f),
+                    new Color(.14f, .73f, 1f), true);
+                Decoration(PrimitiveType.Cube, "Runway neon right " + i,
+                    new Vector3(3.3f, .012f, z), new Vector3(.075f, .025f, 2.1f),
+                    new Color(.14f, .73f, 1f), true);
+            }
+            for (int i = 0; i < 8; i++)
+            {
+                float z = -18f + i * 5f;
+                Decoration(PrimitiveType.Cube, "Wall strip west " + i,
+                    new Vector3(-16.91f, 2.5f, z), new Vector3(.08f, 2f, .12f),
+                    new Color(.13f, .62f, .92f), true);
+                Decoration(PrimitiveType.Cube, "Wall strip east " + i,
+                    new Vector3(16.91f, 2.5f, z), new Vector3(.08f, 2f, .12f),
+                    new Color(.13f, .62f, .92f), true);
+            }
             for (int z = -19; z <= 14; z += 6)
             {
                 Shape(PrimitiveType.Cube, "Warning rail west", new Vector3(-16.85f, .14f, z),
@@ -115,8 +144,8 @@ namespace Palinodia.Gameplay
                 new Vector3(2.2f, 2, 6.2f), new Color(.26f, .32f, .38f));
             for (int i = 0; i < 6; i++)
             {
-                Shape(PrimitiveType.Cube, "Ceiling strip " + i, new Vector3(0, 7.5f, -18 + i * 7),
-                    new Vector3(26, .12f, .2f), accent);
+                Decoration(PrimitiveType.Cube, "Ceiling strip " + i, new Vector3(0, 7.5f, -18 + i * 7),
+                    new Vector3(26, .12f, .2f), accent, true);
             }
             Shape(PrimitiveType.Cylinder, "Heater warning pedestal", new Vector3(-7.5f, .075f, -11),
                 new Vector3(4.5f, .08f, 4.5f), new Color(.55f, .3f, .1f));
@@ -175,6 +204,7 @@ namespace Palinodia.Gameplay
                 38, 540, .4, 22, 104, 6700);
             DroneAgent drone = root.AddComponent<DroneAgent>();
             drone.Initialize(actor, stage, phase);
+            root.AddComponent<DroneVisual>().Initialize(body);
             return body;
         }
 
@@ -214,6 +244,24 @@ namespace Palinodia.Gameplay
             Renderer renderer = g.GetComponent<Renderer>();
             if (renderer != null) renderer.sharedMaterial = mat;
             return g;
+        }
+
+        private GameObject Decoration(PrimitiveType type, string label, Vector3 at, Vector3 scale,
+            Color tint, bool emissive = false)
+        {
+            GameObject go = Shape(type, label, at, scale, tint);
+            Collider collider = go.GetComponent<Collider>();
+            if (collider != null) Destroy(collider);
+            if (emissive)
+            {
+                Material mat = go.GetComponent<Renderer>().sharedMaterial;
+                if (mat.HasProperty("_EmissionColor"))
+                {
+                    mat.EnableKeyword("_EMISSION");
+                    mat.SetColor("_EmissionColor", tint * 2.4f);
+                }
+            }
+            return go;
         }
 
         private static void MakeLight(string label, Vector3 at, LightType type, float intensity,

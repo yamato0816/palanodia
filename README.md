@@ -1,6 +1,6 @@
 # PALINODIA / パリノディア
 
-**Physics Prototype 0.1** — a self-contained, playable third-person Unity demo for an energy-conversion 3D story action game. No proprietary assets, models or Asset Store imports are required. The single demo room is built from primitives at runtime by `DemoBootstrap`.
+**Physics Prototype 0.2** — a self-contained, playable third-person Unity demo for an energy-conversion 3D story action game. No proprietary assets, models or Asset Store imports are required. The single demo room is built from primitives at runtime by `DemoBootstrap`.
 
 > **Status:** Source code and Unity scene included. Not yet compiled or Play-tested in Unity Editor on this machine. First Editor run is the acceptance test.
 
@@ -25,7 +25,7 @@
 | WASD | Move relative to camera |
 | Mouse | Rotate follow camera (cursor captured; Esc releases) |
 | Space | Jump |
-| E (hold) | Draw thermal energy from the glowing orange heat core under crosshair (max 7m) |
+| E (hold) | Absorb heat from a highlighted thermal source within 7.5m (soft aim assist) |
 | Left mouse | Kinetic energy pulse at aimed object; pushes real rigidbodies |
 | Right mouse | Thermal energy pulse at aimed object; heats bodies in a small area |
 | Tab (hold) | Scan aim target's temperature, machine status and energy |
@@ -35,6 +35,8 @@
 ## Demo content
 
 - Third-person `CharacterController`, orbiting camera, crosshair HUD, energy bar, temperature, prompts and objective tracking.
+- Rich runtime FX: orange heat-core embers, responsive neon rings, flowing source-to-player absorption ribbons, chest aura, target callouts, kinetic/thermal impact sparks, drones' thruster particles and scanner halos.
+- Context-aware **HOLD E** / **MOVE CLOSER** / **STORAGE FULL** target UI, with player-side line-of-sight checks so the core's decorative pedestal cannot intercept all aim rays.
 - Finite energy sources, capped energy reservoir, transfer efficiencies/loss, thermal target state, heat exchange with a stage-average ambient.
 - Multi-target pulses with falloff and wall occlusion; kinetic blasts use Rigidbody impulse and explicit kinetic energy accounting.
 - Two physically driven enemy drones that move toward the player and emit local heat bursts. Machines shut down if their electronics overheat or shock exceeds tolerance. Player collapses if body temperature becomes dangerous.
@@ -54,24 +56,17 @@ Docs/PHYSICS_DESIGN.md          # units, conservation assumptions, limitations
 Docs/PROJECT_SOURCE.md          # original project constraints and story canon
 ```
 
-## GitHub setup if using the ZIP
+## GitHub workflow
 
-This ZIP also carries a `.git` repository with an initial local commit, when extracted with hidden directories retained. Create an **empty** GitHub repository named `palinodia` (don't check "Add README"), then from inside the extracted root:
-
-```bash
-git remote add origin https://github.com/YOUR_USERNAME/palinodia.git
-git push -u origin main
-```
-
-If `.git` is not present after extraction:
+Repository: https://github.com/yamato0816/palanodia (the **game title** remains PALINODIA).
 
 ```bash
-git init -b main
-git add .
-git commit -m "feat: PALINODIA playable physics lab prototype"
-git remote add origin https://github.com/YOUR_USERNAME/palinodia.git
-git push -u origin main
+git clone https://github.com/yamato0816/palanodia.git
+cd palanodia
+git switch feature/absorption-vfx-targeting
 ```
+
+This change is on a review branch until the PR is merged into `main`. For installation and QA in Japanese see `README_JA.md` and `Docs/PLAYTEST_CHECKLIST_JA.md`.
 
 ## Next priorities
 
