@@ -16,6 +16,9 @@ check('com.unity.modules.physics' in manifest['dependencies'], '3D physics depen
 
 scripts = list((ROOT / 'Assets/Scripts').rglob('*.cs'))
 check(len(scripts) >= 10, 'gameplay scripts packaged')
+if any(re.search(r'\bParticleSystem\b', script.read_text(encoding='utf-8')) for script in scripts):
+    check(manifest['dependencies'].get('com.unity.modules.particlesystem') == '1.0.0',
+          'Particle System module enabled when VFX scripts reference ParticleSystem')
 check((ROOT / 'Assets/Scenes/PhysicsLab.unity').is_file(), 'Unity playable scene included')
 check('Palinodia.Runtime' in (ROOT / 'Assets/Tests/Editor/Palinodia.EditorTests.asmdef').read_text(),
       'edit-mode tests reference runtime assembly')

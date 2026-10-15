@@ -45,12 +45,36 @@ namespace Palinodia.Presentation
             GUI.color = old;
         }
 
+        private void DrawAbsorbTargetMarker()
+        {
+            PhysicalBodyState target = ability.AbsorptionTarget;
+            Camera view = Camera.main;
+            if (target == null || view == null) return;
+            Collider col = target.GetComponent<Collider>();
+            Vector3 source = col != null ? col.bounds.center + Vector3.up * (col.bounds.extents.y + .75f) :
+                target.transform.position + Vector3.up * 1.5f;
+            Vector3 pos = view.WorldToScreenPoint(source);
+            if (pos.z <= 0) return;
+            float x = Mathf.Clamp(pos.x, 116, Screen.width - 116);
+            float y = Mathf.Clamp(Screen.height - pos.y, 24, Screen.height - 145);
+            bool ready = ability.CanAbsorbTarget;
+            bool full = ability.Reservoir.StoredJ >= ability.Reservoir.CapacityJ - .001;
+            Color tint = ready ? new Color(.16f, .83f, .76f, .96f) : new Color(.85f, .52f, .17f, .96f);
+            RectColor(new Rect(x - 108, y - 11, 216, 44), new Color(.018f, .075f, .11f, .93f));
+            RectColor(new Rect(x - 108, y - 11, 4, 44), tint);
+            GUI.Label(new Rect(x - 98, y - 8, 207, 23),
+                target.Category == BodyCategory.Heater ? "HEAT CORE / ENERGY SOURCE" : "THERMAL ENERGY DETECTED", small);
+            GUI.Label(new Rect(x - 98, y + 11, 208, 25),
+                full ? "STORAGE FULL" : ready ? "HOLD [E]  TO ABSORB" :
+                    "MOVE CLOSER  " + ability.AbsorptionDistance.ToString("F1") + " m", body);
+        }
+
         private void OnGUI()
         {
             if (ability == null || player == null || objective == null || stage == null) return;
             Styles();
             float width = Mathf.Min(485, Screen.width - 24);
-            RectColor(new Rect(12, 12, width, 185), new Color(.045f, .09f, .13f, .87f));
+            RectColor(new Rect(12, 12, width, 206), new Color(.045f, .09f, .13f, .9f));
             GUI.Label(new Rect(24, 19, width - 20, 31), "PALINODIA   /   EXPERIMENT 01", heading);
             GUI.Label(new Rect(24, 54, width - 30, 23), "ENERGY RESERVE", small);
             RectColor(new Rect(24, 78, width - 48, 17), new Color(.12f, .20f, .24f));
@@ -61,17 +85,29 @@ namespace Palinodia.Presentation
             GUI.Label(new Rect(24, 126, width - 36, 24),
                 "Body: " + player.Body.TemperatureC.ToString("F1") + " °C   |   Room: " +
                 stage.TemperatureC.ToString("F1") + " °C   |   " + (stage.PressurePa / 1000).ToString("F1") + " kPa", body);
-            GUI.Label(new Rect(24, 151, width - 36, 30),
+            GUI.Label(new Rect(24, 151, width - 36, 26),
                 "Drones active: " + objective.Remaining + " / 2", body);
+            if (ability.IsAbsorbing)
+            {
+                RectColor(new Rect(24, 182, width - 48, 23), new Color(.02f, .41f, .38f, .94f));
+                GUI.Label(new Rect(31, 181, width - 58, 25),
+                    "<< ABSORBING   +" + ability.AbsorptionRateKJs.ToString("F0") + " kJ/s  >>", body);
+            }
+            else
+            {
+                GUI.Label(new Rect(24, 181, width - 48, 24),
+                    "ABSORPTION MODE / Find the glowing source, hold E", small);
+            }
 
             float crossX = Screen.width * .5f;
             float crossY = Screen.height * .5f;
             RectColor(new Rect(crossX - 9, crossY, 18, 2), new Color(.7f, .95f, 1f, .85f));
             RectColor(new Rect(crossX, crossY - 9, 2, 18), new Color(.7f, .95f, 1f, .85f));
 
-            if (Input.GetKey(KeyCode.Tab) && ability.AimedBody != null)
+            DrawAbsorbTargetMarker();
+            if (Input.GetKey(KeyCode.Tab) && ability.ScannedBody != null)
             {
-                PhysicalBodyState target = ability.AimedBody;
+                PhysicalBodyState target = ability.ScannedBody;
                 RectColor(new Rect(crossX - 165, crossY + 30, 330, 90), new Color(.02f, .13f, .18f, .91f));
                 GUI.Label(new Rect(crossX - 151, crossY + 39, 310, 24), target.DisplayName, body);
                 GUI.Label(new Rect(crossX - 151, crossY + 62, 310, 23), "Temperature " +
@@ -86,7 +122,7 @@ namespace Palinodia.Presentation
             RectColor(new Rect(left, Screen.height - 119, panelW, 105), new Color(.03f, .075f, .11f, .88f));
             GUI.Label(new Rect(left + 12, Screen.height - 112, panelW - 24, 27), objective.Status, big);
             GUI.Label(new Rect(left + 13, Screen.height - 79, panelW - 26, 24),
-                "WASD Move     Mouse Aim     Space Jump     E Absorb     LMB Impulse     RMB Heat", small);
+                "WASD Move     Mouse Aim     Space Jump     HOLD E Absorb     LMB Push     RMB Heat", small);
             GUI.Label(new Rect(left + 13, Screen.height - 52, panelW - 26, 22),
                 "TAB Scan     R Restart     ESC Release Mouse", small);
             string feedback = ability.Feedback;

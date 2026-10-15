@@ -13,23 +13,38 @@ namespace Palinodia.Gameplay
         private readonly List<PhysicalBodyState> eligible = new List<PhysicalBodyState>();
         private readonly List<float> weights = new List<float>();
         private readonly HashSet<PhysicalBodyState> unique = new HashSet<PhysicalBodyState>();
+        private readonly List<PhysicalBodyState> knownBodies = new List<PhysicalBodyState>();
+        private AbsorptionVisual absorptionVfx;
         private FollowCamera cameraRig;
         private PlayerActor actor;
         private StageEnvironmentState stage;
         private float cooldown;
         private string feedback = "Look at the orange core and hold E to harvest heat.";
         private float feedbackUntil;
+        private float absorptionUntil;
+        private float absorptionRateKJs;
+        private const float AbsorbRange = 7.5f;
 
         public EnergyReservoir Reservoir => reservoir;
         public string Feedback => Time.time < feedbackUntil ? feedback : "";
         public PhysicalBodyState AimedBody { get; private set; }
         public float AimDistance { get; private set; }
+        public PhysicalBodyState AbsorptionTarget { get; private set; }
+        public PhysicalBodyState ScannedBody => AimedBody != null ? AimedBody : AbsorptionTarget;
+        public bool CanAbsorbTarget { get; private set; }
+        public bool IsAbsorbing => Time.time < absorptionUntil;
+        public float AbsorptionRateKJs => IsAbsorbing ? absorptionRateKJs : 0f;
+        public float AbsorptionDistance { get; private set; }
 
         public void Initialize(PlayerActor source, FollowCamera rig, StageEnvironmentState environment)
         {
             actor = source;
             cameraRig = rig;
             stage = environment;
+            knownBodies.Clear();
+            knownBodies.AddRange(FindObjectsByType<PhysicalBodyState>(FindObjectsSortMode.None));
+            absorptionVfx = gameObject.AddComponent<AbsorptionVisual>();
+            absorptionVfx.Initialize(actor);
         }
 
         private void Update()
@@ -40,9 +55,10 @@ namespace Palinodia.Gameplay
             AimedBody = aimed ? hit.collider.GetComponentInParent<PhysicalBodyState>() : null;
             AimDistance = aimed ? hit.distance : float.PositiveInfinity;
 
-            if (!actor.Body.Operational) return;
+            SelectAbsorptionTarget();
+            if (absorptionVfx != null) absorptionVfx.SetFocus(AbsorptionTarget, CanAbsorbTarget);
+            if (!actor.Body.Operational || Cursor.lockState != CursorLockMode.Locked) return;
             if (Input.GetKey(KeyCode.E)) Absorb();
-            if (Cursor.lockState != CursorLockMode.Locked) return;
             if (Input.GetMouseButtonDown(0) && cooldown <= 0) Emit(false);
             else if (Input.GetMouseButtonDown(1) && cooldown <= 0) Emit(true);
         }
@@ -62,18 +78,93 @@ namespace Palinodia.Gameplay
             return false;
         }
 
+        /// <summary>
+        /// Aim assist uses screen-space proximity, but extraction still requires player-side line of sight.
+        /// In particular, decorative core rings/pedestals must not steal the camera's one ray hit.
+        /// </summary>
+        private void SelectAbsorptionTarget()
+        {
+            AbsorptionTarget = null;
+            CanAbsorbTarget = false;
+            AbsorptionDistance = float.PositiveInfinity;
+            float bestScore = float.PositiveInfinity;
+            Camera view = cameraRig.View;
+            foreach (PhysicalBodyState body in knownBodies)
+            {
+                if (body == null || body == actor.Body || body.Category == BodyCategory.Living ||
+                    body.MaxRemovableHeatJ < 1) continue;
+                Collider collider = body.GetComponent<Collider>();
+                Vector3 center = collider != null ? collider.bounds.center : body.transform.position;
+                Vector3 viewport = view.WorldToViewportPoint(center);
+                if (viewport.z <= 0) continue;
+                float x = viewport.x - .5f;
+                float y = viewport.y - .5f;
+                float aimError = Mathf.Sqrt(x * x + y * y);
+                // A core remains discoverable even when the crosshair is slightly off its visible shell.
+                if (aimError > (body.Category == BodyCategory.Heater ? .55f : .28f)) continue;
+                float distance = Vector3.Distance(actor.ChestPosition, collider != null ?
+                    collider.ClosestPoint(actor.ChestPosition) : center);
+                if (distance > 24f) continue;
+                float score = aimError * 2.5f + distance * .018f;
+                if (body == AimedBody) score -= .75f;
+                if (body.Category == BodyCategory.Heater) score -= .27f;
+                if (score >= bestScore) continue;
+                if (!VisibleFromPlayer(body, center)) continue;
+                bestScore = score;
+                AbsorptionTarget = body;
+                AbsorptionDistance = distance;
+            }
+            CanAbsorbTarget = AbsorptionTarget != null && AbsorptionDistance <= AbsorbRange &&
+                reservoir.StoredJ < reservoir.CapacityJ - .001;
+        }
+
+        private bool VisibleFromPlayer(PhysicalBodyState body, Vector3 center)
+        {
+            Vector3 from = actor.ChestPosition;
+            Vector3 path = center - from;
+            float length = path.magnitude;
+            if (length < .1f) return true;
+            RaycastHit[] hits = Physics.RaycastAll(from, path / length, length,
+                ~0, QueryTriggerInteraction.Ignore);
+            foreach (RaycastHit hit in hits)
+            {
+                if (hit.collider.transform.IsChildOf(actor.transform) ||
+                    hit.collider.transform.IsChildOf(body.transform)) continue;
+                if (hit.distance < length - .08f) return false;
+            }
+            return true;
+        }
+
         private void Absorb()
         {
-            if (AimedBody == null || AimedBody == actor.Body || AimDistance > 7.5f) return;
-            if (AimedBody.Category == BodyCategory.Living) return;
-            double rateJ = 76000.0 * Time.deltaTime;
-            TransferReceipt receipt = EnergyTransfer.Absorb(AimedBody, reservoir, stage, rateJ, .8);
+            if (AbsorptionTarget == null)
+            {
+                if (Time.time >= feedbackUntil) Inform("Look toward the glowing HEAT CORE. Green ring = absorbable.");
+                return;
+            }
+            if (AbsorptionDistance > AbsorbRange)
+            {
+                if (Time.time >= feedbackUntil) Inform("MOVE CLOSER to the highlighted heat source (within 7.5m).");
+                return;
+            }
+            if (reservoir.StoredJ >= reservoir.CapacityJ - .001)
+            {
+                if (Time.time >= feedbackUntil) Inform("ENERGY STORAGE FULL — discharge before absorbing again.");
+                return;
+            }
+            double requestedJ = 76000.0 * Time.deltaTime;
+            TransferReceipt receipt = EnergyTransfer.Absorb(AbsorptionTarget, reservoir, stage, requestedJ, .8);
             if (receipt.CreditedJ > 0)
             {
-                feedback = "+" + (receipt.CreditedJ / 1000).ToString("F1") + " kJ stored  |  loss " +
-                    (receipt.WasteHeatJ / 1000).ToString("F1") + " kJ → room";
-                feedbackUntil = Time.time + .3f;
+                absorptionUntil = Time.time + .15f;
+                absorptionRateKJs = (float)(receipt.CreditedJ / 1000.0 / Mathf.Max(Time.deltaTime, .0001f));
+                if (absorptionVfx != null) absorptionVfx.Transfer(AbsorptionTarget, receipt.CreditedJ);
+                feedback = "+" + (receipt.CreditedJ / 1000).ToString("F1") + " kJ absorbed   |   " +
+                    (AbsorptionTarget.TemperatureC).ToString("F0") + " °C source   |   " +
+                    (receipt.WasteHeatJ / 1000).ToString("F1") + " kJ dissipated";
+                feedbackUntil = Time.time + .25f;
             }
+            else if (Time.time >= feedbackUntil) Inform("Source has cooled below its usable temperature.");
         }
 
         private void Emit(bool thermal)
